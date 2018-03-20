@@ -3744,6 +3744,7 @@ class TestStone(unittest.TestCase):
         self.assertEqual(cm.exception.lineno, 4)
         self.assertEqual(cm.exception.path, 'test.stone')
 
+        # Test attributes of different types
         stone_cfg_text = textwrap.dedent("""\
             namespace stone_cfg
 
@@ -3900,6 +3901,47 @@ class TestStone(unittest.TestCase):
             cm.exception.msg)
         self.assertEqual(cm.exception.lineno, 9)
         self.assertEqual(cm.exception.path, 'test.stone')
+
+        # Test grouped attributes
+        stone_cfg_text = textwrap.dedent("""\
+            namespace stone_cfg
+            
+            struct Route
+                f1 Boolean
+                f2 Bytes
+            
+            struct RouteGroup1
+                f1 String
+                f2 Int64
+            
+            struct RouteGroup2
+                f1 Float64
+                f2 Timestamp("%Y-%m-%dT%H:%M:%SZ")
+            """)
+        test_text = textwrap.dedent("""\
+            namespace test
+            route r1(Void, Void, Void)
+                attrs
+                    f1 = true
+                    f2 = "asdf"
+                group1
+                    f1 = "hello"
+                    f2 = 1024
+                group2
+                    f1 = 10.24
+                    f2 = "2015-05-12T15:50:38Z"
+            """)
+        api = specs_to_ir([
+            ('stone_cfg.stone', stone_cfg_text),
+            ('test.stone', test_text),
+        ])
+        route = api.namespaces['test'].route_by_name['r1']
+        self.assertEquals(route.attrs['f1'], True)
+        self.assertEquals(route.attrs['f2'], b'asdf')
+        self.assertEquals(route.attrs_group1['f1'], 'Hello')
+        self.assertEquals(route.attrs_group1['f2'], 1024)
+        self.assertEquals(route.attrs_group2['f1'], 10.24)
+        self.assertEquals(route.attrs_group2['f2'], datetime.datetime(2015, 5, 12, 15, 50, 38))
 
     def test_inline_type_def(self):
         text = textwrap.dedent("""\
