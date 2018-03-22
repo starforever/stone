@@ -3392,7 +3392,7 @@ class TestStone(unittest.TestCase):
             specs_to_ir([('test.stone', text)])
 
     def test_name_conflicts(self):
-        # Test name conflict in same file
+        # Test name conflict by struct
         text = textwrap.dedent("""\
             namespace test
 
@@ -3914,7 +3914,7 @@ class TestStone(unittest.TestCase):
                 f1 String
                 f2 Int64
             
-            struct RouteGroup2
+            struct RouteGroupSecond
                 f1 Float64
                 f2 Timestamp("%Y-%m-%dT%H:%M:%SZ")
             """)
@@ -3927,7 +3927,7 @@ class TestStone(unittest.TestCase):
                 group1
                     f1 = "hello"
                     f2 = 1024
-                group2
+                group_second
                     f1 = 10.24
                     f2 = "2015-05-12T15:50:38Z"
             """)
@@ -3940,8 +3940,97 @@ class TestStone(unittest.TestCase):
         self.assertEquals(route.attrs['f2'], b'asdf')
         self.assertEquals(route.attrs_group1['f1'], 'Hello')
         self.assertEquals(route.attrs_group1['f2'], 1024)
-        self.assertEquals(route.attrs_group2['f1'], 10.24)
-        self.assertEquals(route.attrs_group2['f2'], datetime.datetime(2015, 5, 12, 15, 50, 38))
+        self.assertEquals(route.attrs_group_second['f1'], 10.24)
+        self.assertEquals(route.attrs_group_second['f2'],
+                          datetime.datetime(2015, 5, 12, 15, 50, 38))
+
+        # Test defining a struct in stone_cfg without Route prefix
+        stone_cfg_text = textwrap.dedent("""\
+            namespace stone_cfg
+    
+            struct Test
+                f1 Int64
+            """)
+        with self.assertRaises(InvalidSpec) as cm:
+            specs_to_ir([('stone_cfg.stone', stone_cfg_text)])
+        self.assertEqual(
+            "Struct 'Test' defined in the stone_cfg namespace doesn't start with Route.",
+            cm.exception.msg)
+        self.assertEqual(cm.exception.lineno, 3)
+        self.assertEqual(cm.exception.path, 'stone_cfg.stone')
+
+        # Test defining a struct in stone_cfg using underscore
+        stone_cfg_text = textwrap.dedent("""\
+            namespace stone_cfg
+
+            struct Route_Group
+                f1 Int64
+            """)
+        with self.assertRaises(InvalidSpec) as cm:
+            specs_to_ir([('stone_cfg.stone', stone_cfg_text)])
+        self.assertEqual(
+            "Struct 'Route_Group' defined in the stone_cfg namespace contains underscore.",
+            cm.exception.msg)
+        self.assertEqual(cm.exception.lineno, 3)
+        self.assertEqual(cm.exception.path, 'stone_cfg.stone')
+
+        # Test defining a struct in stone_cfg with group name not start with a capital letter
+        stone_cfg_text = textwrap.dedent("""\
+            namespace stone_cfg
+
+            struct Routegroup
+                f1 Int64
+            """)
+        with self.assertRaises(InvalidSpec) as cm:
+            specs_to_ir([('stone_cfg.stone', stone_cfg_text)])
+        self.assertEqual(
+            "Struct 'Routegroup' defined in the stone_cfg namespace has the group name not start "
+            "with a capital letter.",
+            cm.exception.msg)
+        self.assertEqual(cm.exception.lineno, 3)
+        self.assertEqual(cm.exception.path, 'stone_cfg.stone')
+
+        # Test using an undefined attribute group
+        test_text = textwrap.dedent("""\
+            namespace test
+            route r1(Void, Void, Void)
+                group1
+                    f1 = "hello"
+            """)
+        with self.assertRaises(InvalidSpec) as cm:
+            specs_to_ir([('test.stone', test_text)])
+        self.assertEqual(
+            "Route attribute group 'group1' is not defined in stone_cfg.",
+            cm.exception.msg)
+        self.assertEqual(cm.exception.lineno, 3)
+        self.assertEqual(cm.exception.path, 'test.stone')
+
+        # Test using the same group twice
+        stone_cfg_text = textwrap.dedent("""\
+            namespace stone_cfg
+
+            struct RouteGroup1
+                f1 String
+                f2 Int64
+            """)
+        test_text = textwrap.dedent("""\
+            namespace test
+            route r1(Void, Void, Void)
+                group1
+                    f1 = "hello"
+                group1
+                    f2 = 1024
+            """)
+        with self.assertRaises(InvalidSpec) as cm:
+            specs_to_ir([
+                ('stone_cfg.stone', stone_cfg_text),
+                ('test.stone', test_text),
+            ])
+        self.assertEqual(
+            "Route attribute group 'group1' is already used in the route.",
+            cm.exception.msg)
+        self.assertEqual(cm.exception.lineno, 5)
+        self.assertEqual(cm.exception.path, 'test.stone')
 
     def test_inline_type_def(self):
         text = textwrap.dedent("""\
